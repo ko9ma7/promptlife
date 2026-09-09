@@ -2,10 +2,10 @@
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-title PromptLife GitHub Bootstrap v9
+title PromptLife GitHub Bootstrap v10
 
 rem ============================================================================
-rem PromptLife GitHub Bootstrap v9 - Windows 10/11 one-click launcher
+rem PromptLife GitHub Bootstrap v10 - Windows 10/11 one-click launcher
 rem Edit only these values for normal customization.
 rem ============================================================================
 set "REPO_NAME=promptlife"
@@ -41,7 +41,7 @@ set "PL_UPLOAD_ONLY=0"
 
 cls
 echo ============================================================================
-echo PromptLife GitHub Bootstrap v9
+echo PromptLife GitHub Bootstrap v10
 echo ============================================================================
 echo [CHECK] Project folder: %CD%
 echo [CHECK] This version preserves an existing remote main history and uploads the current extracted project without force-push.

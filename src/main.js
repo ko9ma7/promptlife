@@ -69,14 +69,21 @@ function renderShell() {
       <div class="top-actions"><div class="engine-status"><span class="status-dot"></span><span id="gpu-label">${state.gpuState}</span></div><button class="icon-button" id="toggle" aria-label="${state.running ? '시뮬레이션 일시정지' : '시뮬레이션 재생'}">${ic(state.running ? 'pause' : 'play')}</button><button class="icon-button" id="reset" aria-label="초기화">${ic('reset')}</button></div>
     </header>
     <main class="workspace">
-      <section class="stage-card" data-ratio="${state.stageRatio}" aria-label="생태계 시뮬레이션">
-        <canvas id="sim-canvas" class="sim-canvas"></canvas>
-        <div class="stage-topline"><div class="live-chip"><span></span> LIVE ECOLOGY</div><div class="stage-meta"><span id="agent-count">0 agents</span><span id="fps">0 fps</span></div></div>
-        <div class="stage-controls"><button class="mini-button" id="zoom-out" aria-label="축소">${ic('zoomOut')}</button><button class="mini-button" id="zoom-in" aria-label="확대">${ic('zoomIn')}</button><button class="mini-button" id="focus-selected" aria-label="선택 대상 확대">${ic('focus')}</button><button class="mini-button" id="fit-view" aria-label="보기 초기화">${ic('reset')}</button></div>
-        <div class="stage-hint">마우스 휠 확대 · 드래그 이동 · 클릭 검사 · WEBP 저장 가능</div>
-        <div class="world-tags" id="world-tags"></div>
-        <div class="stage-caption"><div><span class="legend blue"></span>Blue <span class="legend red"></span>Red <span class="legend food"></span>Food</div><p id="compute-caption">개체 이동·에너지 갱신 엔진을 초기화하고 있습니다.</p></div>
-      </section>
+      <div class="main-column">
+        <section class="stage-card" data-ratio="${state.stageRatio}" aria-label="생태계 시뮬레이션">
+          <canvas id="sim-canvas" class="sim-canvas"></canvas>
+          <div class="stage-topline"><div class="live-chip"><span></span> LIVE ECOLOGY</div><div class="stage-meta"><span id="agent-count">0 agents</span><span id="fps">0 fps</span></div></div>
+          <div class="stage-controls"><button class="mini-button" id="zoom-out" aria-label="축소">${ic('zoomOut')}</button><button class="mini-button" id="zoom-in" aria-label="확대">${ic('zoomIn')}</button><button class="mini-button" id="focus-selected" aria-label="선택 대상 확대">${ic('focus')}</button><button class="mini-button" id="fit-view" aria-label="보기 초기화">${ic('reset')}</button></div>
+          <div class="stage-hint">마우스 휠 확대 · 드래그 이동 · 클릭 검사 · WEBP 저장 가능</div>
+          <div class="world-tags" id="world-tags"></div>
+          <div class="stage-caption"><div><span class="legend blue"></span>Blue <span class="legend red"></span>Red <span class="legend food"></span>Food</div><p id="compute-caption">개체 이동·에너지 갱신 엔진을 초기화하고 있습니다.</p></div>
+        </section>
+        <section class="control-dock" aria-label="시뮬레이션 제어">
+          <div class="tabs" role="tablist"><button data-tab="prompt" class="active">${ic('flask')}Creature Prompt</button><button data-tab="god">${ic('snow')}God Mode</button><button data-tab="scientist">${ic('spark')}AI Scientist</button></div>
+          <div id="dock"></div>
+        </section>
+        <footer class="footer"><span>PromptLife v1.2</span><span>Responsive lab · Inspect · Zoom · WEBP export</span></footer>
+      </div>
       <aside class="inspector" aria-label="시뮬레이션 통계">
         <section class="panel stats-panel"><div class="panel-title"><div><span>Population</span><small>real-time census</small></div>${ic('activity')}</div>
           ${statRow('Blue', '0', 'flat')}${statRow('Red', '0', 'flat')}${statRow('Food', '0')}
@@ -89,11 +96,6 @@ function renderShell() {
         <section class="panel event-panel"><div class="panel-title"><div><span>Event stream</span><small>latest ecology events</small></div>${ic('zap')}</div><div class="event-list" id="events"><p class="empty">아직 주요 사건이 없습니다.</p></div></section>
       </aside>
     </main>
-    <section class="control-dock" aria-label="시뮬레이션 제어">
-      <div class="tabs" role="tablist"><button data-tab="prompt" class="active">${ic('flask')}Creature Prompt</button><button data-tab="god">${ic('snow')}God Mode</button><button data-tab="scientist">${ic('spark')}AI Scientist</button></div>
-      <div id="dock"></div>
-    </section>
-    <footer class="footer"><span>PromptLife v1.1</span><span>Inspect · Zoom · Color isolate export (.webp) · GitHub Pages ready</span></footer>
     <div class="toast" id="toast" role="status" hidden></div>
   </div>`;
   wireBaseEvents();

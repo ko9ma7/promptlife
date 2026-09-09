@@ -2,10 +2,10 @@
 setlocal EnableExtensions EnableDelayedExpansion
 chcp 65001 >nul
 cd /d "%~dp0"
-title PromptLife GitHub Upload NOW v9
+title PromptLife GitHub Upload NOW v10
 
 rem ============================================================================
-rem PromptLife v9 - minimal, PowerShell-free upload path.
+rem PromptLife v10 - minimal, PowerShell-free upload path.
 rem Existing remote main is preserved. No force-push is used.
 rem ============================================================================
 set "REPO_NAME=promptlife"
@@ -13,12 +13,12 @@ set "REPO_OWNER="
 set "REPO_VISIBILITY=public"
 set "REPO_DESCRIPTION=Prompt-driven WebGPU artificial-life ecosystem simulator with mutation, zoom inspection, WebP export, God Mode, and simulation-log analysis."
 set "DEFAULT_BRANCH=main"
-set "COMMIT_MESSAGE=feat: add zoom inspection and WebP export"
+set "COMMIT_MESSAGE=feat: make lab layout viewport-responsive"
 set "OPEN_RESULT_IN_BROWSER=1"
 
 cls
 echo ============================================================================
-echo PromptLife GitHub Upload NOW v9
+echo PromptLife GitHub Upload NOW v10
 echo ============================================================================
 echo [CHECK] Project folder: %CD%
 echo [CHECK] This uploader does NOT use the provisioning PowerShell script.
@@ -193,7 +193,7 @@ exit /b 0
 
 :missing_project
 echo [ERROR] Complete PromptLife files were not found in this folder.
-echo [RECOVERY] Extract the whole ZIP first and run github-upload-now.cmd inside the extracted promptlife-v9 folder.
+echo [RECOVERY] Extract the whole ZIP first and run github-upload-now.cmd inside the extracted promptlife-v10 folder.
 goto :fail
 
 :missing_git

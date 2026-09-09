@@ -29,6 +29,8 @@ PromptLife는 자연어로 적은 생명체 성향을 수치 규칙으로 컴파
 - 캔버스 휠 확대, 드래그 이동, 클릭 기반 개체 Inspect
 - 선택 개체 중심 확대 및 실시간 개체 상세 정보 표시
 - 현재 보기 / 확대 보기 / 색상 분리 결과를 WEBP 이미지로 저장
+- 데스크톱에서 시뮬레이션 + 하단 명령 Dock을 한 컬럼으로 묶어 큰 공백 제거
+- 화면 높이가 짧을 때 입력창/JSON/Dock을 자동 축소하고 Inspector는 독립 스크롤
 - God Mode: 빙하기, 포식자 투입, 물 의존성, 야간 Red-only 명령
 - AI Scientist: 실제 snapshot/event log를 기반으로 개체수 변화 원인 설명
 - LocalStorage 기반 Prompt 보존

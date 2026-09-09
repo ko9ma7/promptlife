@@ -192,6 +192,19 @@ function Get-LatestRunId([string]$FullRepo, [string]$WorkflowFile, [string]$Bran
     return ''
 }
 
+function Get-RunIdForCommit([string]$FullRepo, [string]$WorkflowFile, [string]$Branch, [string]$CommitSha, [int]$Attempts = 8) {
+    if (-not $CommitSha) { return '' }
+    $jq = '.[] | select(.headSha == "' + $CommitSha + '") | .databaseId'
+    for ($i = 0; $i -lt $Attempts; $i++) {
+        $result = Capture-Native 'gh' @('run','list','-R',$FullRepo,'--workflow',$WorkflowFile,'--branch',$Branch,'--limit','10','--json','databaseId,headSha,event,status,conclusion','--jq',$jq) -AllowFailure
+        if (($result[0] -eq 0) -and $result[1].Trim()) {
+            return (($result[1].Trim() -split "`n")[0]).Trim()
+        }
+        Start-Sleep -Seconds 2
+    }
+    return ''
+}
+
 function Confirm-Account([string]$Login) {
     if ($env:PL_CONFIRM_ACCOUNT -eq '0') { return }
     Write-Host ''
@@ -210,7 +223,7 @@ try {
     Start-Transcript -Path $LogPath -Force | Out-Null
 
     Write-Host '============================================================================'
-    Write-Host 'PromptLife GitHub Bootstrap / Provisioning v9'
+    Write-Host 'PromptLife GitHub Bootstrap / Provisioning v10'
     Write-Host '============================================================================'
     Write-Step 'CHECK' "Project folder: $Root"
 
@@ -483,15 +496,28 @@ try {
     if ($workflowEnableOk) { Write-Step 'OK' 'deploy.yml workflow enabled.' }
     else { Write-Step 'WARN' 'Workflow enable was not accepted; it may already be enabled.' }
 
-    $workflowRun = Invoke-Native 'gh' @('workflow','run','deploy.yml','-R',$FullRepo,'--ref',$Branch) -AllowFailure
-    if ($workflowRun -eq 0) { Write-Step 'OK' 'Deployment workflow dispatched.' }
-    else { Write-Step 'WARN' 'Explicit dispatch was not accepted; the push event may already have started a run.' }
+    # A push to main already triggers deploy.yml. Do not immediately dispatch a
+    # second workflow because Pages concurrency can cancel the first run. First
+    # locate the run for the exact commit that we just verified on GitHub.
+    $CurrentSha = $remoteHead[1].Trim()
+    $RunId = Get-RunIdForCommit $FullRepo 'deploy.yml' $Branch $CurrentSha 8
+    if ($RunId) {
+        Write-Step 'OK' "Push-triggered deployment found for commit $($CurrentSha.Substring(0,7)); no duplicate dispatch needed."
+    } else {
+        Write-Step 'CHECK' 'No push-triggered run found yet; dispatching deploy.yml once.'
+        $workflowRun = Invoke-Native 'gh' @('workflow','run','deploy.yml','-R',$FullRepo,'--ref',$Branch) -AllowFailure
+        if ($workflowRun -eq 0) { Write-Step 'OK' 'Deployment workflow dispatched.' }
+        else { Write-Step 'WARN' 'Explicit dispatch was not accepted; checking existing runs once more.' }
+        $RunId = Get-RunIdForCommit $FullRepo 'deploy.yml' $Branch $CurrentSha 12
+    }
 
-    $RunId = Get-LatestRunId $FullRepo 'deploy.yml' $Branch
+    if (-not $RunId) {
+        $RunId = Get-LatestRunId $FullRepo 'deploy.yml' $Branch
+    }
     if (-not $RunId) {
         Fail 'No deployment workflow run could be found.' "Open $RepoUrl/actions/workflows/deploy.yml"
     }
-    Write-Step 'OK' "Latest deployment run ID: $RunId"
+    Write-Step 'OK' "Deployment run ID: $RunId"
 
     $DeployOk = $false
     if ($env:PL_WAIT_FOR_DEPLOY -ne '0') {
