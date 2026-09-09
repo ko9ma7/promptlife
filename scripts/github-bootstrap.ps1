@@ -35,10 +35,11 @@ function Invoke-Native {
         Write-Host ('       > {0} {1}' -f $File, ($Arguments -join ' '))
     }
 
-    # Native commands can legitimately return non-zero for tests such as
-    # `git diff --quiet`, `git rev-parse --verify HEAD`, or a missing GitHub
-    # resource. Do not let PowerShell turn STDERR into a terminating error;
-    # the process exit code is the source of truth here.
+    # Important: stream native output to the console, but return ONLY the
+    # integer process exit code. Earlier versions leaked command output into
+    # the PowerShell success stream, so `$pushCode = Invoke-Native ...`
+    # became an array such as ["Everything up-to-date", 0] and was then
+    # incorrectly treated as a failed push.
     $oldPreference = $ErrorActionPreference
     $hadPsNativePreference = $false
     $oldPsNativePreference = $null
@@ -49,8 +50,13 @@ function Invoke-Native {
             $oldPsNativePreference = $PSNativeCommandUseErrorActionPreference
             $PSNativeCommandUseErrorActionPreference = $false
         }
-        & $File @Arguments
-        $code = $LASTEXITCODE
+
+        if ($Quiet) {
+            & $File @Arguments *> $null
+        } else {
+            & $File @Arguments 2>&1 | ForEach-Object { Write-Host $_ }
+        }
+        $code = [int]$LASTEXITCODE
     }
     finally {
         if ($hadPsNativePreference) {
@@ -62,7 +68,7 @@ function Invoke-Native {
     if (($code -ne 0) -and (-not $AllowFailure)) {
         throw ('Command failed ({0}): {1} {2}' -f $code, $File, ($Arguments -join ' '))
     }
-    return $code
+    return [int]$code
 }
 
 function Capture-Native {
@@ -204,7 +210,7 @@ try {
     Start-Transcript -Path $LogPath -Force | Out-Null
 
     Write-Host '============================================================================'
-    Write-Host 'PromptLife GitHub Bootstrap / Provisioning v8'
+    Write-Host 'PromptLife GitHub Bootstrap / Provisioning v9'
     Write-Host '============================================================================'
     Write-Step 'CHECK' "Project folder: $Root"
 

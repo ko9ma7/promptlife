@@ -22,6 +22,7 @@ const state = {
   lastRender: 0,
   lastSelectionRefresh: 0,
   view: { zoom: 1, centerX: 0.5, centerY: 0.5, filter: 'all' },
+  stageRatio: localStorage.getItem('promptlife:stage-ratio') || '16:9',
   selectedAgent: null,
   capture: { width: 1600, isolate: 'blue', showGrid: true, showSelection: true },
   exports: [],
@@ -68,7 +69,7 @@ function renderShell() {
       <div class="top-actions"><div class="engine-status"><span class="status-dot"></span><span id="gpu-label">${state.gpuState}</span></div><button class="icon-button" id="toggle" aria-label="${state.running ? '시뮬레이션 일시정지' : '시뮬레이션 재생'}">${ic(state.running ? 'pause' : 'play')}</button><button class="icon-button" id="reset" aria-label="초기화">${ic('reset')}</button></div>
     </header>
     <main class="workspace">
-      <section class="stage-card" aria-label="생태계 시뮬레이션">
+      <section class="stage-card" data-ratio="${state.stageRatio}" aria-label="생태계 시뮬레이션">
         <canvas id="sim-canvas" class="sim-canvas"></canvas>
         <div class="stage-topline"><div class="live-chip"><span></span> LIVE ECOLOGY</div><div class="stage-meta"><span id="agent-count">0 agents</span><span id="fps">0 fps</span></div></div>
         <div class="stage-controls"><button class="mini-button" id="zoom-out" aria-label="축소">${ic('zoomOut')}</button><button class="mini-button" id="zoom-in" aria-label="확대">${ic('zoomIn')}</button><button class="mini-button" id="focus-selected" aria-label="선택 대상 확대">${ic('focus')}</button><button class="mini-button" id="fit-view" aria-label="보기 초기화">${ic('reset')}</button></div>
@@ -135,10 +136,12 @@ function renderViewPanel() {
   <div class="segmented" id="filter-buttons">
     ${['all', 'blue', 'red', 'food'].map((mode) => `<button data-filter="${mode}">${filterLabel(mode)}</button>`).join('')}
   </div>
+  <div class="ratio-row"><span>화면 비율</span><div class="ratio-buttons">${['16:9','4:3','1:1'].map((ratio) => `<button data-ratio-choice="${ratio}">${ratio}</button>`).join('')}</div></div>
   <div class="mini-actions"><button class="mini-outline" id="center-selected">${ic('target')}선택 대상 확대</button><button class="mini-outline" id="clear-selection">${ic('x')}선택 해제</button></div>
   <div id="selected-agent" class="selected-agent"></div>`;
   panel.querySelector('#view-zoom').addEventListener('input', (e) => setZoom(Number(e.target.value) / 100));
   panel.querySelectorAll('[data-filter]').forEach((button) => button.addEventListener('click', () => setFilter(button.dataset.filter)));
+  panel.querySelectorAll('[data-ratio-choice]').forEach((button) => button.addEventListener('click', () => setStageRatio(button.dataset.ratioChoice)));
   panel.querySelector('#center-selected').addEventListener('click', focusSelectedAgent);
   panel.querySelector('#clear-selection').addEventListener('click', clearSelection);
   updateViewPanel();
@@ -151,6 +154,7 @@ function updateViewPanel() {
   const zoomInput = document.querySelector('#view-zoom');
   if (zoomInput && Number(zoomInput.value) !== Math.round(state.view.zoom * 100)) zoomInput.value = String(Math.round(state.view.zoom * 100));
   document.querySelectorAll('[data-filter]').forEach((button) => button.classList.toggle('active', button.dataset.filter === state.view.filter));
+  document.querySelectorAll('[data-ratio-choice]').forEach((button) => button.classList.toggle('active', button.dataset.ratioChoice === state.stageRatio));
   const selected = document.querySelector('#selected-agent');
   if (!selected) return;
   if (!state.selectedAgent) {
@@ -314,6 +318,16 @@ function setZoom(value) {
 function setFilter(filter) {
   state.view.filter = filter;
   syncView();
+}
+
+function setStageRatio(ratio) {
+  if (!['16:9', '4:3', '1:1'].includes(ratio)) return;
+  state.stageRatio = ratio;
+  localStorage.setItem('promptlife:stage-ratio', ratio);
+  const stage = document.querySelector('.stage-card');
+  if (stage) stage.dataset.ratio = ratio;
+  updateViewPanel();
+  notify(`시뮬레이션 화면을 ${ratio} 비율로 변경했습니다.`);
 }
 
 function resetView() {
