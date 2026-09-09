@@ -1,6 +1,7 @@
 import { access, readFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const root = new URL('../', import.meta.url);
 const required = [
@@ -21,6 +22,8 @@ const required = [
   'public/repo-preview.png',
   '.github/workflows/deploy.yml',
   'github-bootstrap.cmd',
+  'github-upload-now.cmd',
+  'scripts/github-bootstrap.ps1',
   '.gitignore',
   '.gitattributes',
   'LICENSE',
@@ -41,7 +44,8 @@ const jsFiles = [
   'scripts/check.mjs',
 ];
 for (const file of jsFiles) {
-  const result = spawnSync(process.execPath, ['--check', new URL(file, root).pathname], { encoding: 'utf8' });
+  const filePath = fileURLToPath(new URL(file, root));
+  const result = spawnSync(process.execPath, ['--check', filePath], { encoding: 'utf8' });
   if (result.status !== 0) {
     throw new Error(`Syntax check failed: ${file}\n${result.stderr}`);
   }
@@ -60,6 +64,22 @@ const requiredMarkup = [
 ];
 for (const marker of requiredMarkup) {
   if (!html.includes(marker)) throw new Error(`Missing HTML metadata marker: ${marker}`);
+}
+
+
+const bootstrapPs = await readFile(new URL('scripts/github-bootstrap.ps1', root), 'utf8');
+if (bootstrapPs.includes('\\"')) {
+  throw new Error('PowerShell bootstrap contains backslash-escaped double quotes, which are invalid PowerShell string escapes.');
+}
+if (!bootstrapPs.includes('Local $Branch is anchored to origin/$Branch')) {
+  throw new Error('PowerShell bootstrap is missing the remote-history anchoring guard.');
+}
+const uploadCmd = await readFile(new URL('github-upload-now.cmd', root), 'utf8');
+if (!uploadCmd.includes('git reset --mixed "origin/%DEFAULT_BRANCH%"')) {
+  throw new Error('Minimal Windows uploader is missing the safe remote-history anchor.');
+}
+if (uploadCmd.includes('powershell.exe')) {
+  throw new Error('Minimal Windows uploader must remain PowerShell-free.');
 }
 
 console.log(`QA passed: ${required.length} required files + ${jsFiles.length} JavaScript syntax checks + metadata checks.`);

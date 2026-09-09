@@ -1,11 +1,11 @@
-# PromptLife
+﻿# PromptLife
 
 **말 한 줄로 생태계를 만들고 브라우저 안에서 진화시키는 WebGPU 실험실.**
 
 PromptLife는 자연어로 적은 생명체 성향을 수치 규칙으로 컴파일하고, 브라우저에서 수천~수만 개체가 이동·먹이 경쟁·포식·번식·돌연변이를 반복하도록 만든 로컬 우선 생태계 시뮬레이터입니다.
 
 <!-- deployment-url:start -->
-**Live:** https://OWNER.github.io/promptlife/
+**Live:** https://ko9ma7.github.io/promptlife/
 <!-- deployment-url:end -->
 
 ## Preview
@@ -24,6 +24,9 @@ PromptLife는 자연어로 적은 생명체 성향을 수치 규칙으로 컴파
 - Blue/Red population, food, generation, extinction, dominant trait 실시간 통계
 - 번식·수명·에너지·포식 압력에 따른 개체수 변화
 - Mutation: 속도/시야/번식률/크기/수명/색상 중 개체 단위 랜덤 변이
+- 캔버스 휠 확대, 드래그 이동, 클릭 기반 개체 Inspect
+- 선택 개체 중심 확대 및 실시간 개체 상세 정보 표시
+- 현재 보기 / 확대 보기 / 색상 분리 결과를 WEBP 이미지로 저장
 - God Mode: 빙하기, 포식자 투입, 물 의존성, 야간 Red-only 명령
 - AI Scientist: 실제 snapshot/event log를 기반으로 개체수 변화 원인 설명
 - LocalStorage 기반 Prompt 보존
@@ -58,6 +61,7 @@ API Key는 프론트엔드에 포함하지 않습니다. 기본 기능은 네트
 - JavaScript ES Modules
 - WebGPU / WGSL compute shader
 - Canvas 2D visualization
+- Client-side WEBP export
 - LocalStorage
 - Node.js zero-dependency build/test scripts
 - GitHub Pages + GitHub Actions
@@ -145,7 +149,27 @@ set SITE_URL=https://USERNAME.github.io/REPOSITORY/
 npm run build
 ```
 
+## Bootstrap v6 repair notes
+
+- v5의 PowerShell `--description` 로그 문자열 파서 오류를 수정했습니다.
+- 원격 `main`에 기존 commit이 있어 `fetch first`로 push가 거절되는 경우를 자동 처리합니다.
+- 새 폴더에서는 `origin/main`을 먼저 local HEAD 기준으로 잡고 현재 프로젝트 파일을 그 위에 commit합니다.
+- 이전 실패로 별도 local root commit이 생긴 폴더에서는 `force push` 대신 `ours` merge commit으로 원격 history를 parent로 보존합니다.
+- 빠른 업로드만 필요하면 `github-upload-now.cmd`를 실행하고, 성공 후 `github-bootstrap.cmd`로 Pages/Actions/Release를 이어서 설정할 수 있습니다.
+
+## Windows GitHub Upload v8
+
+가장 먼저 `github-upload-now.cmd`를 실행하는 것을 권장합니다. v8의 이 파일은 PowerShell provisioning helper를 사용하지 않고 **GitHub Repository 확인 → 원격 main fetch → 현재 프로젝트 파일 commit → push → GitHub API 검증**만 수행하는 최소 업로더입니다. 기존 원격 `main`이 있으면 그 commit을 기준으로 현재 파일을 새 commit으로 올리며 force-push하지 않습니다.
+
+```cmd
+github-upload-now.cmd
+```
+
+업로드가 `[OK] UPLOAD VERIFIED SUCCESSFULLY`로 끝난 뒤 전체 Pages/Release 설정이 필요하면 `github-bootstrap.cmd`를 실행합니다.
+
 ## Windows One-click GitHub Bootstrap
+
+> v1.1.1 fixes Windows Node syntax-check paths by converting file URLs with `fileURLToPath()`, avoiding invalid paths such as `C:\C:\...`.
 
 Windows 10/11에서는 프로젝트 폴더의 다음 파일을 실행합니다.
 
@@ -160,7 +184,7 @@ set "REPO_NAME=promptlife"
 set "REPO_OWNER="
 set "REPO_VISIBILITY=public"
 set "DEFAULT_BRANCH=main"
-set "RELEASE_TAG=v1.0.0"
+set "RELEASE_TAG=v1.1.0"
 set "CUSTOM_DOMAIN="
 set "AUTO_INSTALL_TOOLS=1"
 set "USE_EXISTING_ORIGIN=1"
@@ -168,6 +192,8 @@ set "WAIT_FOR_DEPLOY=1"
 ```
 
 `REPO_OWNER`를 비워두면 현재 `gh` 로그인 계정을 사용합니다. 기본 공개 범위는 `public`입니다. `private` Pages 사용 가능 여부는 GitHub 플랜에 따라 달라질 수 있습니다.
+
+Bootstrap v6는 기존 원격 `main` 이력이 있으면 이를 먼저 가져와 현재 프로젝트를 그 이력 위에 커밋합니다. 이전 실패로 로컬에 별도 root commit이 생긴 경우에도 force-push하지 않고 원격 commit을 merge parent로 보존합니다.
 
 Bootstrap은 다음 작업을 순서대로 수행합니다.
 
@@ -197,7 +223,7 @@ Bootstrap은 다음 작업을 순서대로 수행합니다.
 - **Description:** `Prompt-driven WebGPU artificial-life ecosystem simulator with mutation, God Mode, and simulation-log analysis.`
 - **Default branch:** `main`
 - **Initial commit:** `feat: launch PromptLife WebGPU evolution lab`
-- **Initial tag/release:** `v1.0.0`
+- **Initial tag/release:** `v1.1.0`
 - **Topics:** `webgpu`, `simulation`, `artificial-life`, `evolution`, `ecosystem`, `javascript`, `canvas`, `github-pages`
 
 동일 값은 `.github/REPOSITORY_METADATA.md`에도 정리되어 있습니다.

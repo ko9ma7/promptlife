@@ -34,8 +34,31 @@ function Invoke-Native {
     if (-not $Quiet) {
         Write-Host ('       > {0} {1}' -f $File, ($Arguments -join ' '))
     }
-    & $File @Arguments
-    $code = $LASTEXITCODE
+
+    # Native commands can legitimately return non-zero for tests such as
+    # `git diff --quiet`, `git rev-parse --verify HEAD`, or a missing GitHub
+    # resource. Do not let PowerShell turn STDERR into a terminating error;
+    # the process exit code is the source of truth here.
+    $oldPreference = $ErrorActionPreference
+    $hadPsNativePreference = $false
+    $oldPsNativePreference = $null
+    try {
+        $ErrorActionPreference = 'Continue'
+        if (Test-Path variable:PSNativeCommandUseErrorActionPreference) {
+            $hadPsNativePreference = $true
+            $oldPsNativePreference = $PSNativeCommandUseErrorActionPreference
+            $PSNativeCommandUseErrorActionPreference = $false
+        }
+        & $File @Arguments
+        $code = $LASTEXITCODE
+    }
+    finally {
+        if ($hadPsNativePreference) {
+            $PSNativeCommandUseErrorActionPreference = $oldPsNativePreference
+        }
+        $ErrorActionPreference = $oldPreference
+    }
+
     if (($code -ne 0) -and (-not $AllowFailure)) {
         throw ('Command failed ({0}): {1} {2}' -f $code, $File, ($Arguments -join ' '))
     }
@@ -148,8 +171,7 @@ function Wait-ForRepo([string]$FullRepo) {
 
 function Wait-ForWorkflow([string]$FullRepo, [string]$WorkflowFile) {
     for ($i = 0; $i -lt 20; $i++) {
-        & gh workflow view $WorkflowFile -R $FullRepo *> $null
-        if ($LASTEXITCODE -eq 0) { return $true }
+        if (Test-NativeSuccess 'gh' @('workflow','view',$WorkflowFile,'-R',$FullRepo)) { return $true }
         Start-Sleep -Seconds 3
     }
     return $false
@@ -182,7 +204,7 @@ try {
     Start-Transcript -Path $LogPath -Force | Out-Null
 
     Write-Host '============================================================================'
-    Write-Host 'PromptLife GitHub Bootstrap / Provisioning v4'
+    Write-Host 'PromptLife GitHub Bootstrap / Provisioning v8'
     Write-Host '============================================================================'
     Write-Step 'CHECK' "Project folder: $Root"
 
@@ -208,8 +230,8 @@ try {
 
     Write-Host ''
     Write-Step 'CHECK' 'GitHub authentication'
-    & gh auth status --active -h github.com *> $null
-    if ($LASTEXITCODE -ne 0) {
+    $authOk = Test-NativeSuccess 'gh' @('auth','status','--active','-h','github.com')
+    if (-not $authOk) {
         Write-Step 'WARN' 'No active GitHub CLI account. Starting browser login.'
         Invoke-Native 'gh' @('auth','login','--hostname','github.com','--git-protocol','https','--web') | Out-Null
     }
@@ -222,8 +244,8 @@ try {
     $ExpectedUser = if ($env:PL_EXPECTED_GITHUB_USER) { $env:PL_EXPECTED_GITHUB_USER.Trim() } else { '' }
     if ($ExpectedUser -and ($GitHubLogin -ine $ExpectedUser)) {
         Write-Step 'WARN' "Active account is '$GitHubLogin', but EXPECTED_GITHUB_USER is '$ExpectedUser'."
-        & gh auth switch --hostname github.com --user $ExpectedUser *> $null
-        if ($LASTEXITCODE -eq 0) { $GitHubLogin = Get-GitHubLogin }
+        $switchOk = Test-NativeSuccess 'gh' @('auth','switch','--hostname','github.com','--user',$ExpectedUser)
+        if ($switchOk) { $GitHubLogin = Get-GitHubLogin }
         if ($GitHubLogin -ine $ExpectedUser) {
             Fail "Could not switch to expected GitHub account '$ExpectedUser'." "Run: gh auth status ; gh auth switch --hostname github.com --user $ExpectedUser"
         }
@@ -296,7 +318,7 @@ try {
     if ($null -eq $RepoInfo) {
         Write-Step 'CHECK' "Repository does not exist yet. Creating $FullRepo as $Visibility..."
         $visibilityArg = "--$Visibility"
-        Write-Step 'CHECK' ("Executing: gh repo create {0} {1} --description \"{2}\"" -f $FullRepo, $visibilityArg, $Description)
+        Write-Step 'CHECK' ('Executing: gh repo create {0} {1} --description <configured text>' -f $FullRepo, $visibilityArg)
         Invoke-Native 'gh' @('repo','create',$FullRepo,$visibilityArg,'--description',$Description)
         $RepoInfo = Wait-ForRepo $FullRepo
         if ($null -eq $RepoInfo) {
@@ -337,41 +359,50 @@ try {
     Write-Step 'OK' 'Production build passed.'
 
     Write-Host ''
-    Write-Step 'CHECK' 'Commit and push'
-    Invoke-Native 'git' @('add','-A') -Quiet | Out-Null
-    & git rev-parse --verify HEAD *> $null
-    $HasHead = ($LASTEXITCODE -eq 0)
-    & git diff --cached --quiet
-    $HasChanges = ($LASTEXITCODE -ne 0)
-    if ($HasChanges) {
-        $commitMessage = if ($HasHead) { 'chore: provision GitHub repository and Pages deployment' } else { 'feat: launch PromptLife WebGPU evolution lab' }
-        Invoke-Native 'git' @('commit','-m',$commitMessage) | Out-Null
-        Write-Step 'OK' 'Local changes committed.'
-    } elseif (-not $HasHead) {
-        Fail 'No files are available for an initial commit.' 'Verify that the complete PromptLife project was extracted.'
-    } else { Write-Step 'OK' 'Nothing new to commit.' }
-
-    & git ls-remote --exit-code origin "refs/heads/$Branch" *> $null
-    if ($LASTEXITCODE -eq 0) {
+    Write-Step 'CHECK' 'Remote history synchronization'
+    $RemoteBranchExists = Test-NativeSuccess 'git' @('ls-remote','--exit-code','origin',"refs/heads/$Branch")
+    if ($RemoteBranchExists) {
         Invoke-Native 'git' @('fetch','origin',$Branch,'--quiet') -Quiet | Out-Null
-        & git merge-base --is-ancestor "origin/$Branch" HEAD *> $null
-        if ($LASTEXITCODE -ne 0) {
-            Write-Step 'WARN' "Remote $Branch has history not present locally. Attempting safe rebase."
-            & git rebase "origin/$Branch"
-            if ($LASTEXITCODE -ne 0) {
-                & git rebase --abort *> $null
-                Fail 'Automatic rebase could not reconcile the remote history.' "Run: git fetch origin ; git rebase origin/$Branch ; resolve conflicts ; rerun github-bootstrap.cmd"
-            }
-            Write-Step 'OK' "Rebased onto origin/$Branch."
+        Write-Step 'OK' "Fetched origin/$Branch."
+
+        # Always anchor the local branch to the verified remote history while
+        # leaving the extracted PromptLife files untouched in the working tree.
+        # This handles both an unborn fresh repository and a previous failed
+        # local root commit without force-pushing or losing the remote history.
+        $HadLocalHead = Test-NativeSuccess 'git' @('rev-parse','--verify','HEAD')
+        if ($HadLocalHead) {
+            Invoke-Native 'git' @('branch','-f','bootstrap-local-backup','HEAD') -Quiet -AllowFailure | Out-Null
+            Write-Step 'OK' 'Saved the previous local HEAD as bootstrap-local-backup.'
         }
+        Invoke-Native 'git' @('reset','--mixed',"origin/$Branch") | Out-Null
+        Write-Step 'OK' "Local $Branch is anchored to origin/$Branch; extracted PromptLife files remain in the working tree."
+    } else {
+        Write-Step 'OK' "Remote branch origin/$Branch does not exist yet."
     }
 
-    & git push -u origin $Branch
-    if ($LASTEXITCODE -ne 0) {
+    Write-Host ''
+    Write-Step 'CHECK' 'Commit current PromptLife files'
+    Invoke-Native 'git' @('add','-A') -Quiet | Out-Null
+    $HasHead = Test-NativeSuccess 'git' @('rev-parse','--verify','HEAD')
+    $IndexClean = Test-NativeSuccess 'git' @('diff','--cached','--quiet')
+    $HasChanges = -not $IndexClean
+    if ($HasChanges) {
+        $commitMessage = if ($HasHead) { 'feat: add zoom inspection and WebP export' } else { 'feat: launch PromptLife WebGPU evolution lab' }
+        Invoke-Native 'git' @('commit','-m',$commitMessage) | Out-Null
+        Write-Step 'OK' 'Current PromptLife files committed.'
+    } elseif (-not $HasHead) {
+        Fail 'No files are available for an initial commit.' 'Verify that the complete PromptLife project was extracted.'
+    } else {
+        Write-Step 'OK' 'Nothing new to commit; remote and extracted project already match.'
+    }
+    Write-Host ''
+    Write-Step 'CHECK' "Pushing $Branch to GitHub"
+    $pushCode = Invoke-Native 'git' @('push','-u','origin',$Branch) -AllowFailure
+    if ($pushCode -ne 0) {
         Write-Step 'WARN' 'Push failed. Refreshing workflow permission and retrying once.'
-        & gh auth refresh -h github.com -s workflow
-        if ($LASTEXITCODE -eq 0) { & git push -u origin $Branch }
-        if ($LASTEXITCODE -ne 0) {
+        $refreshCode = Invoke-Native 'gh' @('auth','refresh','-h','github.com','-s','workflow') -AllowFailure
+        if ($refreshCode -eq 0) { $pushCode = Invoke-Native 'git' @('push','-u','origin',$Branch) -AllowFailure }
+        if ($pushCode -ne 0) {
             Fail 'Push failed.' "Run: gh auth refresh -h github.com -s workflow ; then: git push -u origin $Branch"
         }
     }
@@ -382,16 +413,40 @@ try {
     }
     Write-Step 'OK' "$Branch push verified by GitHub API. Remote commit: $($remoteHead[1].Trim().Substring(0,7))"
 
+    if ($env:PL_UPLOAD_ONLY -eq '1') {
+        $uploadResult = @(
+            'PromptLife GitHub Upload SUCCESS',
+            ('Timestamp: ' + (Get-Date -Format 'yyyy-MM-dd HH:mm:ss K')),
+            ('GitHub account: ' + $GitHubLogin),
+            ('Repository: ' + $RepoUrl),
+            ('Branch: ' + $Branch),
+            ('Remote commit: ' + $remoteHead[1].Trim())
+        ) -join "`r`n"
+        Set-Content -Path $ResultPath -Value $uploadResult -Encoding UTF8
+        Write-Host ''
+        Write-Host '============================================================================'
+        Write-Step 'OK' 'UPLOAD-ONLY GITHUB VERIFICATION PASSED'
+        Write-Step 'OK' "Repository : $RepoUrl"
+        Write-Step 'OK' "Branch     : $Branch"
+        Write-Step 'OK' "Result     : $ResultPath"
+        Write-Host '============================================================================'
+        if ($env:PL_OPEN_RESULT_IN_BROWSER -ne '0') {
+            try { Start-Process $RepoUrl } catch { Write-Step 'WARN' 'Could not open the Repository in the browser automatically.' }
+        }
+        $global:LASTEXITCODE = 0
+        return
+    }
+
     Write-Host ''
     Write-Step 'CHECK' 'Repository metadata'
-    & gh repo edit $FullRepo --description $Description --homepage $DeployUrl --default-branch $Branch
-    if ($LASTEXITCODE -ne 0) { Write-Step 'WARN' 'One or more repository metadata fields could not be applied.' }
+    $metaCode = Invoke-Native 'gh' @('repo','edit',$FullRepo,'--description',$Description,'--homepage',$DeployUrl,'--default-branch',$Branch) -AllowFailure
+    if ($metaCode -ne 0) { Write-Step 'WARN' 'One or more repository metadata fields could not be applied.' }
     $topics = @()
     if ($env:PL_REPO_TOPICS) { $topics = $env:PL_REPO_TOPICS -split '\s+' }
     foreach ($topic in $topics) {
         if ($topic) {
-            & gh repo edit $FullRepo --add-topic $topic *> $null
-            if ($LASTEXITCODE -ne 0) { Write-Step 'WARN' "Topic could not be applied: $topic" }
+            $topicOk = Test-NativeSuccess 'gh' @('repo','edit',$FullRepo,'--add-topic',$topic)
+            if (-not $topicOk) { Write-Step 'WARN' "Topic could not be applied: $topic" }
         }
     }
     Write-Step 'OK' 'Repository metadata processed.'
@@ -418,12 +473,12 @@ try {
     }
     Write-Step 'OK' 'deploy.yml is visible to GitHub Actions.'
 
-    & gh workflow enable deploy.yml -R $FullRepo *> $null
-    if ($LASTEXITCODE -eq 0) { Write-Step 'OK' 'deploy.yml workflow enabled.' }
+    $workflowEnableOk = Test-NativeSuccess 'gh' @('workflow','enable','deploy.yml','-R',$FullRepo)
+    if ($workflowEnableOk) { Write-Step 'OK' 'deploy.yml workflow enabled.' }
     else { Write-Step 'WARN' 'Workflow enable was not accepted; it may already be enabled.' }
 
-    & gh workflow run deploy.yml -R $FullRepo --ref $Branch
-    if ($LASTEXITCODE -eq 0) { Write-Step 'OK' 'Deployment workflow dispatched.' }
+    $workflowRun = Invoke-Native 'gh' @('workflow','run','deploy.yml','-R',$FullRepo,'--ref',$Branch) -AllowFailure
+    if ($workflowRun -eq 0) { Write-Step 'OK' 'Deployment workflow dispatched.' }
     else { Write-Step 'WARN' 'Explicit dispatch was not accepted; the push event may already have started a run.' }
 
     $RunId = Get-LatestRunId $FullRepo 'deploy.yml' $Branch
@@ -435,8 +490,8 @@ try {
     $DeployOk = $false
     if ($env:PL_WAIT_FOR_DEPLOY -ne '0') {
         Write-Step 'CHECK' 'Waiting for GitHub Pages deployment result...'
-        & gh run watch $RunId -R $FullRepo --exit-status
-        if ($LASTEXITCODE -ne 0) {
+        $watchCode = Invoke-Native 'gh' @('run','watch',$RunId,'-R',$FullRepo,'--exit-status') -AllowFailure
+        if ($watchCode -ne 0) {
             Fail 'Deployment workflow failed.' "Run: gh run view $RunId -R $FullRepo --log-failed"
         }
         $DeployOk = $true
@@ -445,24 +500,24 @@ try {
 
     $pagesResult = Capture-Native 'gh' @('api',"repos/$FullRepo/pages",'--jq','.html_url') -AllowFailure
     if (($pagesResult[0] -eq 0) -and $pagesResult[1].Trim()) { $DeployUrl = $pagesResult[1].Trim() }
-    & gh repo edit $FullRepo --homepage $DeployUrl *> $null
+    Test-NativeSuccess 'gh' @('repo','edit',$FullRepo,'--homepage',$DeployUrl) | Out-Null
 
     if ($DeployOk) {
         Write-Host ''
         Write-Step 'CHECK' 'Initial tag and release'
         $Tag = if ($env:PL_RELEASE_TAG) { $env:PL_RELEASE_TAG } else { 'v1.0.0' }
-        & git ls-remote --exit-code --tags origin "refs/tags/$Tag" *> $null
-        if ($LASTEXITCODE -ne 0) {
-            & git rev-parse "refs/tags/$Tag" *> $null
-            if ($LASTEXITCODE -ne 0) { Invoke-Native 'git' @('tag','-a',$Tag,'-m',"PromptLife $Tag") | Out-Null }
+        $remoteTagExists = Test-NativeSuccess 'git' @('ls-remote','--exit-code','--tags','origin',"refs/tags/$Tag")
+        if (-not $remoteTagExists) {
+            $localTagExists = Test-NativeSuccess 'git' @('rev-parse',"refs/tags/$Tag")
+            if (-not $localTagExists) { Invoke-Native 'git' @('tag','-a',$Tag,'-m',"PromptLife $Tag") | Out-Null }
             Invoke-Native 'git' @('push','origin',$Tag) | Out-Null
             Write-Step 'OK' "Tag $Tag pushed."
         } else { Write-Step 'OK' "Tag $Tag already exists; creation skipped." }
 
         $releaseCheck = Capture-Native 'gh' @('release','view',$Tag,'-R',$FullRepo) -AllowFailure
         if ($releaseCheck[0] -ne 0) {
-            & gh release create $Tag -R $FullRepo --title "PromptLife $Tag" --notes 'Initial PromptLife release: prompt-driven WebGPU ecosystem simulation, Mutation, God Mode, and AI Scientist log analysis.'
-            if ($LASTEXITCODE -eq 0) { Write-Step 'OK' "GitHub Release $Tag created." }
+            $releaseCode = Invoke-Native 'gh' @('release','create',$Tag,'-R',$FullRepo,'--title',"PromptLife $Tag",'--notes','PromptLife release: prompt-driven WebGPU ecosystem simulation, zoom inspection, WebP export, Mutation, God Mode, and AI Scientist log analysis.') -AllowFailure
+            if ($releaseCode -eq 0) { Write-Step 'OK' "GitHub Release $Tag created." }
             else { Write-Step 'WARN' "Release creation failed. Recovery: gh release create $Tag -R $FullRepo --generate-notes" }
         } else { Write-Step 'OK' "GitHub Release $Tag already exists; creation skipped." }
     }

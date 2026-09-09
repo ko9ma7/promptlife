@@ -2,20 +2,20 @@
 setlocal EnableExtensions
 chcp 65001 >nul
 cd /d "%~dp0"
-title PromptLife GitHub Bootstrap v4
+title PromptLife GitHub Bootstrap v8
 
 rem ============================================================================
-rem PromptLife GitHub Bootstrap v4 - Windows 10/11 one-click launcher
+rem PromptLife GitHub Bootstrap v8 - Windows 10/11 one-click launcher
 rem Edit only these values for normal customization.
 rem ============================================================================
 set "REPO_NAME=promptlife"
 set "REPO_OWNER="
 set "EXPECTED_GITHUB_USER="
 set "REPO_VISIBILITY=public"
-set "REPO_DESCRIPTION=Prompt-driven WebGPU artificial-life ecosystem simulator with mutation, God Mode, and simulation-log analysis."
+set "REPO_DESCRIPTION=Prompt-driven WebGPU artificial-life ecosystem simulator with zoom inspection, WebP export, mutation, God Mode, and simulation-log analysis."
 set "REPO_TOPICS=webgpu simulation artificial-life evolution ecosystem javascript canvas github-pages"
 set "DEFAULT_BRANCH=main"
-set "RELEASE_TAG=v1.0.0"
+set "RELEASE_TAG=v1.1.0"
 set "CUSTOM_DOMAIN="
 set "AUTO_INSTALL_TOOLS=1"
 set "WAIT_FOR_DEPLOY=1"
@@ -37,13 +37,14 @@ set "PL_WAIT_FOR_DEPLOY=%WAIT_FOR_DEPLOY%"
 set "PL_CONFIRM_ACCOUNT=%CONFIRM_ACCOUNT%"
 set "PL_OPEN_RESULT_IN_BROWSER=%OPEN_RESULT_IN_BROWSER%"
 set "PL_PROJECT_ROOT=%CD%"
+set "PL_UPLOAD_ONLY=0"
 
 cls
 echo ============================================================================
-echo PromptLife GitHub Bootstrap v4
+echo PromptLife GitHub Bootstrap v8
 echo ============================================================================
 echo [CHECK] Project folder: %CD%
-echo [CHECK] This version treats a missing repo (HTTP 404) as CREATE, not as a fatal PowerShell error.
+echo [CHECK] This version preserves an existing remote main history and uploads the current extracted project without force-push.
 echo.
 
 if not exist "package.json" goto :not_extracted
